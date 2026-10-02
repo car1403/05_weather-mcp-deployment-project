@@ -14,7 +14,7 @@ from mcp.types import ToolAnnotations
 from dotenv import load_dotenv
 from starlette.responses import JSONResponse
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parents[1] / "config" / ".env")
 
 MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0")
 MCP_PORT = int(os.getenv("MCP_PORT", "8010"))

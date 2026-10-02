@@ -10,7 +10,7 @@ import requests
 import streamlit as st
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parents[1] / "config" / ".env")
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 st.set_page_config(page_title="Weather MCP Agent", page_icon="🌦️", layout="wide")

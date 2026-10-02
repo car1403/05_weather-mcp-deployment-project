@@ -19,7 +19,7 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parents[1] / "config" / ".env")
 
 MCP_URL = os.getenv("WEATHER_MCP_URL", "http://127.0.0.1:8010/mcp")
 app = FastAPI(title="Weather MCP Agent", version="1.0.0")

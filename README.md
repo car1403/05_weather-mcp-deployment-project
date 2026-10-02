@@ -55,14 +55,23 @@ MCP `8010`과 Backend `8000`은 Host·Security Group에 공개하지 않고, Bro
 ## 프로젝트 구조
 
 ```text
-backend/app.py              Weather Agent API, MCP Client, Cloud LLM
-backend/Dockerfile
-frontend/app.py             왼쪽 메뉴가 있는 Streamlit 화면
-frontend/Dockerfile
-mcp_server/server.py        Open-Meteo get_weather MCP Tool
-mcp_server/Dockerfile
-compose.yml                 세 Container 연결과 Health Check
-.env.example                OpenAI·Gemini 설정
+backend/
+├─ src/main.py              Weather Agent API, MCP Client, Cloud LLM
+├─ tests/test_main.py
+├─ config/                  개발·Docker 환경 파일
+├─ requirements/            Runtime·Test 의존성
+└─ deploy/                  Dockerfile·Compose
+frontend/
+├─ src/app.py               왼쪽 메뉴가 있는 Streamlit 화면
+├─ config/
+├─ requirements/
+└─ deploy/
+mcp_server/
+├─ src/server.py            Open-Meteo get_weather MCP Tool
+├─ tests/test_server.py
+├─ config/
+├─ requirements/
+└─ deploy/
 ```
 
 ## 1단계: 실행 준비
@@ -89,7 +98,10 @@ Get-NetTCPConnection -LocalPort 8000,8501 -ErrorAction SilentlyContinue
 
 ```powershell
 cd C:\aidevs\07_multi-agent-service-ops\00_runtime-and-deployment\05_weather-mcp-deployment-project
-Copy-Item .env.example .env
+Copy-Item backend/config/.env.example backend/config/.env
+Copy-Item backend/config/.env.docker.example backend/config/.env.docker
+Copy-Item frontend/config/.env.docker.example frontend/config/.env.docker
+Copy-Item mcp_server/config/.env.docker.example mcp_server/config/.env.docker
 ```
 
 `.env`에 사용할 Provider의 API Key를 입력합니다. OpenAI와 Gemini를 모두 사용할 경우 두
@@ -108,7 +120,7 @@ GEMINI_MODEL=gemini-3.5-flash
 환경 파일이 Git에 포함되지 않는지 확인합니다.
 
 ```powershell
-git check-ignore .env
+git check-ignore backend/config/.env
 ```
 
 ## 2단계: Docker Compose 실행
@@ -116,7 +128,9 @@ git check-ignore .env
 ### 1. 설정 검사
 
 ```powershell
-docker compose config --quiet
+docker compose -f mcp_server/deploy/compose.yml config --quiet
+docker compose -f backend/deploy/compose.yml config --quiet
+docker compose -f frontend/deploy/compose.yml config --quiet
 ```
 
 아무 출력 없이 끝나면 YAML 문법과 변수 치환이 정상입니다. 이 명령은 Container를 만들지
@@ -125,8 +139,9 @@ docker compose config --quiet
 ### 2. Image Build와 실행
 
 ```powershell
-docker compose up -d --build
-docker compose ps
+docker compose -f mcp_server/deploy/compose.yml up -d --build
+docker compose -f backend/deploy/compose.yml up -d --build
+docker compose -f frontend/deploy/compose.yml up -d --build
 ```
 
 기대 순서는 다음과 같습니다.
@@ -250,11 +265,20 @@ cd C:\aidevs\07_multi-agent-service-ops\00_runtime-and-deployment\05_weather-mcp
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -r .\backend\requirements.txt
-python -m pip install pytest
-python -m pytest .\backend\test_app.py -q
-docker compose config --quiet
-docker compose build
+Push-Location .\backend
+python -m pip install -r .\requirements\test.txt
+python -m pytest .\tests -q
+Pop-Location
+Push-Location .\mcp_server
+python -m pip install -r .\requirements\test.txt
+python -m pytest .\tests -q
+Pop-Location
+docker compose -f .\backend\deploy\compose.yml config --quiet
+docker compose -f .\frontend\deploy\compose.yml config --quiet
+docker compose -f .\mcp_server\deploy\compose.yml config --quiet
+docker compose -f .\backend\deploy\compose.yml build
+docker compose -f .\frontend\deploy\compose.yml build
+docker compose -f .\mcp_server\deploy\compose.yml build
 ```
 
 `.venv`는 Python Test 패키지를 프로젝트별로 분리합니다. `docker compose`는 가상환경 안에
@@ -266,16 +290,18 @@ PowerShell에서 그대로 실행하면 됩니다.
 ```text
 소스 Checkout
 → Python 3.12 준비
-→ Backend 의존성·pytest 설치
+→ 서비스별 의존성·pytest 설치
 → Fake Weather MCP·Fake LLM Backend Test
-→ Compose YAML과 환경 변수 참조 검사
-→ Frontend·Backend·Weather MCP Image Build
+→ Fake Open-Meteo MCP Server Test
+→ 서비스별 Compose YAML과 환경 변수 참조 검사
+→ 서비스별 Docker Image Build
 ```
 
 | 검사 | CI가 확인하는 것 | CI가 확인하지 않는 것 |
 | --- | --- | --- |
 | Backend Test | Health와 Weather Agent 응답 계약 | 실제 OpenAI·Gemini 호출 |
 | Fake MCP | Tool Result가 응답에 포함되는지 | 실제 Open-Meteo 연결 |
+| MCP Server Test | 날짜 선택·도시 미발견·외부 API 오류 계약 | 실제 Open-Meteo 연결 |
 | Compose config | YAML 문법·변수 치환 | Container의 실제 장시간 운영 |
 | Docker Build | 세 Dockerfile로 Image 생성 가능 | Registry Push·EC2 실행 |
 
@@ -286,16 +312,18 @@ Fake 함수로 교체합니다. CI 성공 후에도 실제 API 통합은 로컬 
 
 ## 5단계: GitHub Actions Workflow 준비
 
-Workflow 파일은 저장소 루트의 다음 위치에 있어야 합니다.
+Workflow 파일은 저장소 루트의 다음 위치에 서비스별로 둡니다.
 
 ```text
-.github/workflows/07-weather-mcp-cicd.yml
+.github/workflows/backend-ci.yml
+.github/workflows/frontend-ci.yml
+.github/workflows/mcp-server-ci.yml
 ```
 
 `.github`는 `05_weather-mcp-deployment-project` 안이 아니라 Git 저장소 최상위 폴더에 둡니다.
 GitHub는 기본적으로 이 위치의 `.yml` 또는 `.yaml`만 Workflow로 인식합니다.
 
-이 프로젝트의 Workflow는 다음 이벤트를 사용합니다.
+세 Workflow는 담당 서비스 디렉터리 또는 자기 Workflow 파일이 변경될 때만 실행됩니다.
 
 | 이벤트 | CI Job | AWS Deploy Job |
 | --- | --- | --- |
@@ -313,14 +341,12 @@ GitHub는 기본적으로 이 위치의 `.yml` 또는 `.yaml`만 Workflow로 인
 on:
   push:
     paths:
-      - ".../05_weather-mcp-deployment-project/backend/**"
-      - ".../05_weather-mcp-deployment-project/frontend/**"
-      - ".../05_weather-mcp-deployment-project/mcp_server/**"
-      - ".../05_weather-mcp-deployment-project/compose.yml"
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
   pull_request:
     paths:
-      - "07_multi-agent-service-ops/00_runtime-and-deployment/05_weather-mcp-deployment-project/**"
-      - ".github/workflows/07-weather-mcp-cicd.yml"
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
   workflow_dispatch:
     inputs:
       deploy:
@@ -346,7 +372,9 @@ deploy:
 ```powershell
 git switch -c weather-mcp-lab
 git add 07_multi-agent-service-ops/00_runtime-and-deployment/05_weather-mcp-deployment-project
-git add .github/workflows/07-weather-mcp-cicd.yml
+git add .github/workflows/backend-ci.yml
+git add .github/workflows/frontend-ci.yml
+git add .github/workflows/mcp-server-ci.yml
 git commit -m "Add weather MCP deployment lab"
 git push -u origin weather-mcp-lab
 ```
@@ -358,7 +386,8 @@ Commit이 맞는지 확인하고 `test-and-build` Job을 엽니다. 실패했으
 | 실패 Step | 먼저 확인할 내용 |
 | --- | --- |
 | Install dependencies | Python 버전, requirements 경로·패키지 이름 |
-| Test backend contract | 최초 실패 Test, Import·응답 계약 변경 |
+| Test backend | 최초 실패 Test, Import·응답 계약 변경 |
+| Test MCP server | Open-Meteo Fake 응답과 Tool 계약 변경 |
 | Validate Compose | YAML 들여쓰기, 환경 변수, 파일 경로 |
 | Build three images | Dockerfile의 `COPY`, Base Image, requirements |
 
