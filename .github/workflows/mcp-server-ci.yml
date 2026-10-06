@@ -87,4 +87,33 @@ jobs:
           AWS_HOST: ${{ secrets.AWS_HOST }}
           AWS_USER: ${{ secrets.AWS_USER }}
         run: |
-          ssh -o BatchMode=yes -o ConnectTimeout=15 -o ConnectionAttempts=2 -o ServerAliveInterval=15 -o ServerAliveCountMax=20 "$AWS_USER@$AWS_HOST" 'cd ~/mcp_server && test -f config/.env.docker && docker compose -f deploy/compose.yml config --quiet && docker compose -f deploy/compose.yml up -d --build && curl --fail --retry 12 --retry-delay 5 http://127.0.0.1:8010/health'
+          ssh -o BatchMode=yes -o ConnectTimeout=15 -o ConnectionAttempts=2 -o ServerAliveInterval=15 -o ServerAliveCountMax=20 "$AWS_USER@$AWS_HOST" 'bash -se' <<'REMOTE'
+          cd ~/mcp_server
+
+          if [ ! -f config/.env.docker ]; then
+            echo "ERROR: ~/mcp_server/config/.env.docker is missing"
+            exit 1
+          fi
+
+          echo "Validating Docker Compose configuration"
+          docker compose -f deploy/compose.yml config --quiet
+
+          echo "Building and starting MCP server"
+          docker compose -f deploy/compose.yml up -d --build
+
+          echo "Waiting for MCP server health endpoint"
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error http://127.0.0.1:8010/health; then
+              echo
+              echo "MCP server is healthy"
+              exit 0
+            fi
+            echo "Health check attempt ${attempt}/12 failed"
+            sleep 5
+          done
+
+          echo "MCP server did not become healthy"
+          docker compose -f deploy/compose.yml ps
+          docker compose -f deploy/compose.yml logs --no-color --tail=100
+          exit 1
+          REMOTE

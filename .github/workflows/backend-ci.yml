@@ -87,4 +87,15 @@ jobs:
           AWS_HOST: ${{ secrets.AWS_HOST }}
           AWS_USER: ${{ secrets.AWS_USER }}
         run: |
-          ssh -o BatchMode=yes -o ConnectTimeout=15 -o ConnectionAttempts=2 -o ServerAliveInterval=15 -o ServerAliveCountMax=20 "$AWS_USER@$AWS_HOST" 'cd ~/backend && test -f config/.env.docker && docker compose -f deploy/compose.yml config --quiet && docker compose -f deploy/compose.yml up -d --build && curl --fail --retry 12 --retry-delay 5 http://127.0.0.1:8000/health/ready'
+          ssh -o BatchMode=yes -o ConnectTimeout=15 -o ConnectionAttempts=2 -o ServerAliveInterval=15 -o ServerAliveCountMax=20 "$AWS_USER@$AWS_HOST" 'bash -se' <<'REMOTE'
+          cd ~/backend
+
+          if [ ! -f config/.env.docker ]; then
+            echo "ERROR: ~/backend/config/.env.docker is missing"
+            exit 1
+          fi
+
+          docker compose -f deploy/compose.yml config --quiet
+          docker compose -f deploy/compose.yml up -d --build
+          curl --fail --retry 12 --retry-delay 5 http://127.0.0.1:8000/health/ready
+          REMOTE
