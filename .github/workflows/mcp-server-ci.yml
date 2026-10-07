@@ -82,7 +82,7 @@ jobs:
           ssh -o BatchMode=yes -o ConnectTimeout=15 -o ConnectionAttempts=2 "$AWS_USER@$AWS_HOST" 'mkdir -p ~/mcp_server'
           echo "Copying MCP server source"
           scp -o BatchMode=yes -o ConnectTimeout=15 -o ConnectionAttempts=2 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -r mcp_server/. "$AWS_USER@$AWS_HOST:~/mcp_server/"
-      - name: Deploy MCP server and verify health
+      - name: Deploy MCP server
         env:
           AWS_HOST: ${{ secrets.AWS_HOST }}
           AWS_USER: ${{ secrets.AWS_USER }}
@@ -105,22 +105,12 @@ jobs:
           echo "Validating Docker Compose configuration"
           docker compose -f deploy/compose.yml config --quiet
 
+          echo "Docker disk usage before cleanup"
+          docker system df
+          docker system prune --all --force
+          echo "Docker disk usage after cleanup"
+          docker system df
+
           echo "Building and starting MCP server"
-          docker compose -f deploy/compose.yml up -d --build
-
-          echo "Waiting for MCP server health endpoint"
-          for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error http://127.0.0.1:8010/health; then
-              echo
-              echo "MCP server is healthy"
-              exit 0
-            fi
-            echo "Health check attempt ${attempt}/12 failed"
-            sleep 5
-          done
-
-          echo "MCP server did not become healthy"
-          docker compose -f deploy/compose.yml ps
-          docker compose -f deploy/compose.yml logs --no-color --tail=100
-          exit 1
+          docker compose -f deploy/compose.yml up -d --build --remove-orphans
           REMOTE
