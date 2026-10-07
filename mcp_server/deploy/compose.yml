@@ -6,7 +6,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     env_file:
-      - ../config/.env.docker
+      - ../.env.docker
     ports:
       - "8010:8010"
     # healthcheck:

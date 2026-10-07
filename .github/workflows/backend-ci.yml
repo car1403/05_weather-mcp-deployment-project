@@ -47,7 +47,7 @@ jobs:
       - name: Test backend
         run: python -m pytest tests/test_main.py -q
       - name: Prepare CI environment file
-        run: cp config/.env.docker.example config/.env.docker
+        run: cp config/.env.docker.example .env.docker
       - name: Validate Compose
         run: docker compose -f deploy/compose.yml config --quiet
       - name: Build backend image
@@ -90,8 +90,15 @@ jobs:
           ssh -o BatchMode=yes -o ConnectTimeout=15 -o ConnectionAttempts=2 -o ServerAliveInterval=15 -o ServerAliveCountMax=20 "$AWS_USER@$AWS_HOST" 'bash -se' <<'REMOTE'
           cd ~/backend
 
-          if [ ! -f config/.env.docker ]; then
-            echo "ERROR: ~/backend/config/.env.docker is missing"
+          if [ ! -f .env.docker ]; then
+            echo "ERROR: ~/backend/.env.docker is missing"
+            echo "Remote user: $(whoami)"
+            echo "Remote home: $HOME"
+            echo "Current directory: $(pwd)"
+            echo "Contents of ~/backend:"
+            ls -la 2>&1 || true
+            echo "Detected .env.docker paths under ~/backend:"
+            find "$HOME/backend" -maxdepth 3 -type f -name '.env.docker' -print 2>/dev/null || true
             exit 1
           fi
 
